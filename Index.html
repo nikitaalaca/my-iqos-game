@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>IQOS Expert Simulator</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.60.0/phaser.min.js"></script>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body { margin: 0; padding: 0; background: #000; overflow: hidden; font-family: sans-serif; }
+        canvas { display: block; margin: 0 auto; }
+    </style>
+</head>
+<body>
+<script>
+    const tg = window.Telegram.WebApp;
+    tg.expand(); // Расширяем на весь экран ТГ
+
+    const config = {
+        type: Phaser.AUTO,
+        width: 400,
+        height: 600,
+        backgroundColor: '#f4f4f4',
+        parent: 'game-container',
+        scene: { preload: preload, create: create, update: update }
+    };
+
+    const game = new Phaser.Game(config);
+    let money = 0;
+    let statusText, moneyText, instruction;
+
+    function preload() {
+        // Здесь мы используем заглушки-цвета, так как у нас нет картинок
+        // В реальной игре ты заменишь их на свои .png файлы
+    }
+
+    function create() {
+        // Фон магазина
+        this.add.rectangle(200, 300, 400, 600, 0xeeeeee);
+        this.add.text(200, 50, "МАГАЗИН IQOS", { fontSize: '24px', color: '#333', fontWeight: 'bold' }).setOrigin(0.5);
+
+        // Деньги
+        moneyText = this.add.text(20, 20, `Баланс: $${money}`, { fontSize: '18px', color: '#000' });
+
+        // Персонаж клиента (условный круг)
+        let client = this.add.circle(200, 200, 50, 0x3498db);
+        statusText = this.add.text(200, 280, "Клиент: У меня плохо тянется...", { 
+            fontSize: '16px', color: '#444', backgroundColor: '#fff', padding: 5 
+        }).setOrigin(0.5);
+
+        // Девайс для чистки (серый прямоугольник)
+        let device = this.add.rectangle(200, 450, 60, 150, 0x333333).setInteractive();
+        let dirt = this.add.circle(200, 420, 15, 0x554433); // "Грязь"
+
+        instruction = this.add.text(200, 550, "НАЖМИ НА ГРЯЗЬ, ЧТОБЫ ОЧИСТИТЬ", { 
+            fontSize: '14px', color: '#e74c3c' 
+        }).setOrigin(0.5);
+
+        // Логика чистки
+        dirt.setInteractive();
+        dirt.on('pointerdown', () => {
+            dirt.alpha -= 0.3; // Грязь исчезает при клике
+            if (dirt.alpha <= 0) {
+                dirt.destroy();
+                completeTask();
+            }
+        });
+    }
+
+    function completeTask() {
+        money += 50;
+        moneyText.setText(`Баланс: $${money}`);
+        statusText.setText("Клиент: Спасибо! Теперь все отлично.");
+        instruction.setText("ЗАДАНИЕ ВЫПОЛНЕНО +$50");
+        
+        // Вибрация телефона через Telegram SDK
+        if (tg.HapticFeedback) {
+            tg.HapticFeedback.notificationOccurred('success');
+        }
+    }
+
+    function update() {}
+</script>
+</body>
+</html>
