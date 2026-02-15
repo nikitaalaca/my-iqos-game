@@ -3,150 +3,255 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>IQOS Smash Expert</title>
-    <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+    <title>Whack-A-IQOS</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; touch-action: none; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            text-align: center;
+            background: linear-gradient(135deg, #fdfbfb 0%, #ebedee 100%);
+            margin: 0;
+            padding: 0;
+            overflow: hidden; /* Чтобы не скроллилось на телефоне */
+            touch-action: manipulation;
+        }
+
+        h1 {
+            color: #333;
+            margin-top: 20px;
+            font-size: 24px;
+        }
+
+        .score-board {
+            background: #2b2b2b;
+            color: #00d2ff;
+            font-size: 30px;
+            padding: 10px 20px;
+            border-radius: 15px;
+            display: inline-block;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+        }
+
+        .game {
+            width: 350px; /* Ширина под мобилку */
+            height: 350px;
+            display: flex;
+            flex-wrap: wrap;
+            margin: 0 auto;
+        }
+
+        .hole {
+            flex: 1 0 30%; /* 3 колонки */
+            height: 100px;
+            overflow: hidden;
+            position: relative;
+            background: url('hole.png') bottom center no-repeat;
+            background-size: contain;
+            /* Если нет картинки hole.png, будет просто серый овал: */
+            background-color: rgba(0,0,0,0.1); 
+            border-radius: 50%;
+            margin: 5px;
+            cursor: pointer;
+        }
+
+        .hole:after {
+            content: '';
+            display: block;
+            background: url('hole.png') bottom center no-repeat;
+            background-size: contain;
+            position: absolute;
+            z-index: 2;
+            bottom: -30px;
+            width: 100%;
+            height: 70px;
+        }
+
+        /* Класс для Айкоса (цель) */
+        .iqos {
+            background: url('iqos.png') bottom center no-repeat;
+            background-size: 60%;
+            position: absolute;
+            top: 100%;
+            width: 100%;
+            height: 100%;
+            transition: all 0.2s; /* Скорость анимации */
+        }
+
+        /* Класс для Стиков (ловушка) */
+        .sticks {
+            background: url('sticks.png') bottom center no-repeat;
+            background-size: 70%;
+            position: absolute;
+            top: 100%;
+            width: 100%;
+            height: 100%;
+            transition: all 0.2s;
+        }
+
+        /* Анимация появления */
+        .hole.up .iqos, .hole.up .sticks {
+            top: 0;
+        }
+
+        button {
+            background-color: #00d2ff;
+            border: none;
+            padding: 15px 32px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 20px 2px;
+            cursor: pointer;
+            border-radius: 12px;
+            color: white;
+            font-weight: bold;
+            box-shadow: 0 4px 0 #009acb;
+        }
+        
+        button:active {
+            transform: translateY(4px);
+            box-shadow: none;
+        }
+
+        .game-over-msg {
+            color: red;
+            font-weight: bold;
+            display: none;
+        }
+
     </style>
 </head>
 <body>
+
+    <h1>Whack-A-IQOS</h1>
+    <div class="score-board">Счет: <span class="score">0</span></div>
+
+    <div class="game">
+        <div class="hole hole1"><div class="iqos"></div></div>
+        <div class="hole hole2"><div class="iqos"></div></div>
+        <div class="hole hole3"><div class="iqos"></div></div>
+        <div class="hole hole4"><div class="iqos"></div></div>
+        <div class="hole hole5"><div class="iqos"></div></div>
+        <div class="hole hole6"><div class="iqos"></div></div>
+        <div class="hole hole7"><div class="iqos"></div></div>
+        <div class="hole hole8"><div class="iqos"></div></div>
+        <div class="hole hole9"><div class="iqos"></div></div>
+    </div>
+
+    <h2 class="game-over-msg">ИГРА ОКОНЧЕНА!</h2>
+    <button onClick="startGame()">НАЧАТЬ ИГРУ</button>
+
 <script>
+    // Инициализация Telegram WebApp
     const tg = window.Telegram.WebApp;
-    tg.expand();
+    tg.expand(); // Развернуть на весь экран
 
-    class WhackGame extends Phaser.Scene {
-        constructor() { super('WhackGame'); }
+    const holes = document.querySelectorAll('.hole');
+    const scoreBoard = document.querySelector('.score');
+    const iqoses = document.querySelectorAll('.iqos');
+    const gameOverMsg = document.querySelector('.game-over-msg');
+    
+    let lastHole;
+    let timeUp = false;
+    let score = 0;
 
-        init() {
-            this.score = 0;
-            this.timeLeft = 30; // Игра длится 30 секунд
-            this.isGameOver = false;
-        }
-
-        create() {
-            const { width, height } = this.scale;
-
-            // Фон (Стильный темный стол)
-            const bg = this.add.graphics();
-            bg.fillGradientStyle(0x0f0f0f, 0x0f0f0f, 0x1a1a1a, 0x1a1a1a, 1);
-            bg.fillRect(0, 0, width, height);
-
-            // Сетка "дырок" (3x3)
-            this.holes = [];
-            const startX = width * 0.2;
-            const startY = height * 0.3;
-            const spacingX = width * 0.3;
-            const spacingY = height * 0.15;
-
-            for (let i = 0; i < 3; i++) {
-                for (let j = 0; j < 3; j++) {
-                    const hX = startX + (i * spacingX);
-                    const hY = startY + (j * spacingY);
-                    
-                    // Рисуем дырку
-                    this.add.ellipse(hX, hY + 40, 80, 40, 0x000000);
-                    
-                    this.holes.push({ x: hX, y: hY });
-                }
-            }
-
-            // Интерфейс
-            this.scoreText = this.add.text(20, 20, `ОЧКИ: 0`, { fontSize: '24px', fill: '#00f2ff', fontWeight: 'bold' });
-            this.timeText = this.add.text(width - 150, 20, `ВРЕМЯ: 30`, { fontSize: '24px', fill: '#ff3300' });
-
-            // Таймер игры
-            this.gameTimer = this.time.addEvent({
-                delay: 1000,
-                callback: () => {
-                    this.timeLeft--;
-                    this.timeText.setText(`ВРЕМЯ: ${this.timeLeft}`);
-                    if (this.timeLeft <= 0) this.gameOver();
-                },
-                loop: true
-            });
-
-            // Цикл появления айкосов
-            this.spawnTimer = this.time.addEvent({
-                delay: 800,
-                callback: () => this.spawnIqos(),
-                loop: true
-            });
-        }
-
-        spawnIqos() {
-            if (this.isGameOver) return;
-
-            const hole = Phaser.Utils.Array.GetRandom(this.holes);
-            
-            // Создаем визуальный объект айкоса (прямоугольник с закруглением)
-            const iqos = this.add.container(hole.x, hole.y + 50);
-            const body = this.add.rectangle(0, 0, 40, 100, 0xffffff).setRadius(10);
-            const light = this.add.circle(0, -30, 5, 0x00f2ff);
-            iqos.add([body, light]);
-
-            // Анимация выпрыгивания
-            this.tweens.add({
-                targets: iqos,
-                y: hole.y - 20,
-                duration: 300,
-                yoyo: true,
-                hold: 400, // Сколько он "висит" перед тем как уйти обратно
-                onComplete: () => iqos.destroy()
-            });
-
-            body.setInteractive();
-            body.on('pointerdown', () => {
-                this.score += 10;
-                this.scoreText.setText(`ОЧКИ: ${this.score}`);
-                tg.HapticFeedback.impactOccurred('medium');
-                
-                // Эффект взрыва (разлетающиеся частицы)
-                this.createExplosion(hole.x, hole.y);
-                
-                iqos.destroy();
-            });
-        }
-
-        createExplosion(x, y) {
-            for (let i = 0; i < 5; i++) {
-                const part = this.add.rectangle(x, y, 10, 10, 0x00f2ff);
-                this.tweens.add({
-                    targets: part,
-                    x: x + Phaser.Math.Between(-50, 50),
-                    y: y + Phaser.Math.Between(-50, 50),
-                    alpha: 0,
-                    duration: 400,
-                    onComplete: () => part.destroy()
-                });
-            }
-        }
-
-        gameOver() {
-            this.isGameOver = true;
-            this.spawnTimer.remove();
-            this.gameTimer.remove();
-
-            const { width, height } = this.scale;
-            this.add.rectangle(width/2, height/2, width, height, 0x000000, 0.8);
-            this.add.text(width/2, height/2 - 50, "КОНЕЦ ИГРЫ", { fontSize: '42px', fill: '#00f2ff' }).setOrigin(0.5);
-            this.add.text(width/2, height/2 + 20, `РЕЗУЛЬТАТ: ${this.score}`, { fontSize: '28px', fill: '#fff' }).setOrigin(0.5);
-
-            const restartBtn = this.add.rectangle(width/2, height/2 + 100, 200, 50, 0x00f2ff).setInteractive();
-            this.add.text(width/2, height/2 + 100, "ЗАНОВО", { color: '#000' }).setOrigin(0.5);
-
-            restartBtn.on('pointerdown', () => location.reload());
-        }
+    // Генерация случайного времени появления
+    function randomTime(min, max) {
+        return Math.round(Math.random() * (max - min) + min);
     }
 
-    const config = {
-        type: Phaser.AUTO,
-        width: window.innerWidth,
-        height: window.innerHeight,
-        scene: WhackGame,
-        backgroundColor: '#000'
-    };
-    new Phaser.Game(config);
+    // Выбор случайной лунки
+    function randomHole(holes) {
+        const idx = Math.floor(Math.random() * holes.length);
+        const hole = holes[idx];
+        if (hole === lastHole) {
+            return randomHole(holes);
+        }
+        lastHole = hole;
+        return hole;
+    }
+
+    // Механика появления (Главная логика)
+    function peep() {
+        const time = randomTime(500, 1200); // Скорость (от 0.5 до 1.2 сек)
+        const hole = randomHole(holes);
+        
+        // 20% шанс, что это будут стики (ловушка), 80% - айкос
+        const isTrap = Math.random() > 0.8; 
+        
+        const item = hole.querySelector('div');
+        
+        // Сброс классов перед анимацией
+        item.classList.remove('iqos', 'sticks');
+        
+        if (isTrap) {
+            item.classList.add('sticks');
+            item.dataset.type = 'trap'; // Помечаем как ловушку
+        } else {
+            item.classList.add('iqos');
+            item.dataset.type = 'target'; // Помечаем как цель
+        }
+
+        hole.classList.add('up');
+
+        setTimeout(() => {
+            hole.classList.remove('up');
+            if (!timeUp) peep();
+        }, time);
+    }
+
+    function startGame() {
+        scoreBoard.textContent = 0;
+        timeUp = false;
+        score = 0;
+        gameOverMsg.style.display = 'none';
+        peep();
+        
+        // Игра длится 15 секунд
+        setTimeout(() => {
+            timeUp = true;
+            gameOverMsg.style.display = 'block';
+            
+            // Вибрация об окончании (если поддерживается телефоном)
+            if(tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+            
+            alert('Время вышло! Твой счет: ' + score);
+        }, 15000);
+    }
+
+    // Обработка удара
+    function bonk(e) {
+        if(!e.isTrusted) return; // Защита от скриптов-читов
+        
+        const item = this.querySelector('div');
+        const hole = this;
+
+        if (!hole.classList.contains('up')) return; // Если уже спрятался
+
+        if (item.dataset.type === 'trap') {
+            // УДАРИЛ ПО СТИКАМ (НЕЛЬЗЯ)
+            console.log("Ой! Стики!");
+            score -= 5; // Штраф
+            if(tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('error'); // Вибрация ошибки
+            // Визуальный эффект ошибки (можно добавить красный фон)
+            hole.style.backgroundColor = 'red';
+            setTimeout(() => hole.style.backgroundColor = '', 200);
+        } else {
+            // УДАРИЛ ПО АЙКОСУ (МОЖНО)
+            score++;
+            if(tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium'); // Легкая вибрация
+        }
+        
+        hole.classList.remove('up');
+        scoreBoard.textContent = score;
+    }
+
+    holes.forEach(hole => hole.addEventListener('click', bonk));
+    // Поддержка тач-событий для быстрой реакции на телефоне
+    holes.forEach(hole => hole.addEventListener('touchstart', bonk));
+
 </script>
 </body>
 </html>
