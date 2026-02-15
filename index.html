@@ -3,235 +3,181 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>IQOS Expert Simulator 2D</title>
+    <title>IQOS Expert Saga</title>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        body { margin: 0; padding: 0; background: #000; overflow: hidden; font-family: 'Arial', sans-serif; }
-        canvas { display: block; margin: 0 auto; }
-        #game-container {
-            width: 100vw;
-            height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            background-color: #000;
-        }
+        body { margin: 0; background: #0a0a0a; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
     </style>
 </head>
 <body>
-<div id="game-container"></div>
-
 <script>
-    // Инициализация Telegram WebApp
     const tg = window.Telegram.WebApp;
-    tg.expand(); // Расширяем приложение на весь экран
-    tg.ready();
+    tg.expand();
 
-    let currentMoney = 0;
-    let currentMission = 0;
-    let missions = [
-        {
-            problem: "Устройство плохо тянется, похоже на засор.",
-            solution: "Почистить устройство",
-            reward: 50,
-            status: "initial"
-        },
-        {
-            problem: "Мигает красным, нагреватель не работает.",
-            solution: "Сделать диагностику", // Тут можно будет добавить мини-игру по диагностике
-            reward: 75,
-            status: "initial"
-        },
-        {
-            problem: "Хочу посмотреть новые вкусы и купить что-нибудь.",
-            solution: "Предложить продукт", // Тут будет выбор из ассортимента
-            reward: 100,
-            status: "initial"
-        }
-    ];
+    class IQOSGame extends Phaser.Scene {
+        constructor() { super('IQOSGame'); }
 
-    const config = {
-        type: Phaser.AUTO,
-        width: window.innerWidth, // Адаптивная ширина
-        height: window.innerHeight, // Адаптивная высота
-        parent: 'game-container',
-        scene: [BootScene, GameScene] // Добавляем несколько сцен
-    };
-
-    const game = new Phaser.Game(config);
-
-    // --- Сцена загрузки и главного меню ---
-    class BootScene extends Phaser.Scene {
-        constructor() {
-            super('BootScene');
-        }
-
-        preload() {
-            this.load.image('play_button', 'assets/play_button.png');
-            this.load.image('shop_bg', 'assets/shop_bg.png');
-            this.load.image('client', 'assets/client.png');
-            this.load.image('iqos_device', 'assets/iqos_device.png');
+        init() {
+            // Загрузка данных или значения по умолчанию
+            this.money = parseInt(localStorage.getItem('iqos_money')) || 0;
+            this.xp = parseInt(localStorage.getItem('iqos_xp')) || 0;
+            this.level = Math.floor(this.xp / 500) + 1;
         }
 
         create() {
-            // Фон главного меню
-            this.add.image(this.cameras.main.width / 2, this.cameras.main.height / 2, 'shop_bg')
-                .setOrigin(0.5)
-                .setDisplaySize(this.cameras.main.width, this.cameras.main.height);
+            const { width, height } = this.scale;
 
-            this.add.text(this.cameras.main.width / 2, this.cameras.main.height * 0.2, "IQOS Expert Simulator", { 
-                fontSize: '32px', 
-                fill: '#fff', 
-                stroke: '#000', 
-                strokeThickness: 4,
-                align: 'center' 
-            }).setOrigin(0.5);
+            // Рендер фона
+            const bg = this.add.graphics();
+            bg.fillGradientStyle(0x1a1a1a, 0x1a1a1a, 0x050505, 0x050505, 1);
+            bg.fillRect(0, 0, width, height);
 
-            const playButton = this.add.image(this.cameras.main.width / 2, this.cameras.main.height * 0.7, 'play_button')
-                .setInteractive()
-                .setScale(0.5); // Масштабируем кнопку
+            // Верхняя панель (Рейтинг и Деньги)
+            this.uiPanel = this.add.graphics().fillStyle(0x000000, 0.7).fillRect(0, 0, width, 100);
+            this.moneyText = this.add.text(20, 20, `💵 $${this.money}`, { fontSize: '22px', fill: '#00f2ff', fontWeight: 'bold' });
+            this.levelText = this.add.text(20, 55, `⭐ Уровень: ${this.level} (XP: ${this.xp})`, { fontSize: '16px', fill: '#ffffff' });
 
-            playButton.on('pointerdown', () => {
-                this.sound.add('click_sound')?.play(); // Если добавим звук клика
-                tg.HapticFeedback.impactOccurred('light');
-                this.scene.start('GameScene');
-            });
-
-            // Загрузка состояния игры (если есть)
-            this.loadGameState();
+            // Генерация случайного клиента
+            this.createRandomClient();
         }
 
-        loadGameState() {
-            const savedState = localStorage.getItem('iqosGameSave');
-            if (savedState) {
-                const data = JSON.parse(savedState);
-                currentMoney = data.money;
-                currentMission = data.missionIndex;
-                missions = data.missions;
-                // Дополнительно можно загружать другие параметры
-                console.log("Игра загружена:", data);
-            } else {
-                console.log("Новая игра");
-            }
-        }
-    }
+        createRandomClient() {
+            const { width, height } = this.scale;
+            const missionTypes = ['clean', 'diag', 'sale'];
+            const type = missionTypes[Math.floor(Math.random() * missionTypes.length)];
 
-    // --- Основная игровая сцена ---
-    class GameScene extends Phaser.Scene {
-        constructor() {
-            super('GameScene');
-            this.clientSprite = null;
-            this.iqosSprite = null;
-            this.dialogText = null;
-            this.moneyText = null;
-            this.actionButton = null;
-        }
+            this.currentMission = this.getMissionData(type);
 
-        create() {
-            // Фон магазина
-            this.add.image(this.cameras.main.width / 2, this.cameras.main.height / 2, 'shop_bg')
-                .setOrigin(0.5)
-                .setDisplaySize(this.cameras.main.width, this.cameras.main.height);
+            // Визуал клиента
+            this.clientContainer = this.add.container(width/2, height * 0.4);
+            const body = this.add.ellipse(0, 100, 130, 200, 0x222222).setStrokeStyle(2, 0x444444);
+            const head = this.add.circle(0, 0, 40, 0x333333);
+            this.clientContainer.add([body, head]);
 
-            // Клиент
-            this.clientSprite = this.add.image(this.cameras.main.width / 2, this.cameras.main.height * 0.4, 'client')
-                .setScale(0.3) // Масштабируем клиента
-                .setOrigin(0.5, 1); // Нижняя часть клиента упирается в середину
-
-            // IQOS
-            this.iqosSprite = this.add.image(this.cameras.main.width * 0.7, this.cameras.main.height * 0.65, 'iqos_device')
-                .setScale(0.15) // Масштабируем IQOS
-                .setInteractive({ pixelPerfect: true }); // Для точного клика по картинке
-
-            // Тексты
-            this.moneyText = this.add.text(20, 20, `Баланс: $${currentMoney}`, { fontSize: '20px', fill: '#000', backgroundColor: '#fff', padding: 5 });
-            this.dialogText = this.add.text(this.cameras.main.width / 2, this.cameras.main.height * 0.2, "", { 
-                fontSize: '18px', 
-                fill: '#333', 
-                backgroundColor: '#f9f9f9', 
-                padding: { x: 15, y: 10 }, 
-                wordWrap: { width: this.cameras.main.width * 0.8 },
-                align: 'center'
+            // Облачко диалога
+            this.dialogBox = this.add.container(width/2, height * 0.7);
+            const rect = this.add.rectangle(0, 0, width - 40, 150, 0xffffff, 0.05).setStrokeStyle(1, 0x00f2ff, 0.3);
+            const msg = this.add.text(0, -30, this.currentMission.text, { 
+                fontSize: '18px', fill: '#fff', align: 'center', wordWrap: { width: width - 80 } 
             }).setOrigin(0.5);
 
             // Кнопка действия
-            this.actionButton = this.add.text(this.cameras.main.width / 2, this.cameras.main.height * 0.85, "Начать работу", { 
-                fontSize: '22px', 
-                fill: '#fff', 
-                backgroundColor: '#28a745', 
-                padding: { x: 20, y: 10 } 
-            })
-            .setOrigin(0.5)
-            .setInteractive();
+            const btn = this.add.rectangle(0, 40, 220, 50, 0x00f2ff).setInteractive();
+            const btnTxt = this.add.text(0, 40, "НАЧАТЬ", { color: '#000', fontWeight: 'bold' }).setOrigin(0.5);
+            
+            this.dialogBox.add([rect, msg, btn, btnTxt]);
 
-            this.actionButton.on('pointerdown', this.handleAction, this);
-            this.iqosSprite.on('pointerdown', this.handleIqosClick, this); // Клик по IQOS
-
-            this.nextMission(); // Запускаем первую миссию
+            btn.on('pointerdown', () => this.startMission(type));
         }
 
-        nextMission() {
-            if (currentMission >= missions.length) {
-                this.dialogText.setText("Все миссии выполнены! Отличная работа! Игра начнется сначала.");
-                currentMission = 0; // Начинаем заново
-                missions.forEach(m => m.status = "initial"); // Сбрасываем статус
-                this.time.delayedCall(3000, this.nextMission, [], this); // Запускаем через 3 секунды
-                return;
-            }
-
-            let mission = missions[currentMission];
-            this.dialogText.setText(`Клиент: ${mission.problem}\n\nЧто будем делать?`);
-            this.actionButton.setText(mission.solution);
-            this.actionButton.setBackgroundColor('#007bff'); // Кнопка действия
-
-            this.iqosSprite.setTint(0xffffff); // Убираем подсветку
-        }
-
-        handleAction() {
-            let mission = missions[currentMission];
-            if (mission.status === "initial") {
-                this.dialogText.setText(`Вы начали: "${mission.solution}".\n\n(Кликните по IQOS, чтобы выполнить)`);
-                this.actionButton.disableInteractive();
-                this.actionButton.setBackgroundColor('#999999');
-                this.iqosSprite.setTint(0xffff00); // Подсвечиваем IQOS
-                mission.status = "in_progress";
-            }
-        }
-
-        handleIqosClick() {
-            let mission = missions[currentMission];
-            if (mission.status === "in_progress") {
-                // Имитация "работы"
-                this.dialogText.setText("Работа завершена! Отличная чистка/диагностика/продажа!");
-                this.iqosSprite.setTint(0x00ff00); // Зеленая подсветка
-                
-                currentMoney += mission.reward;
-                this.moneyText.setText(`Баланс: $${currentMoney}`);
-                tg.HapticFeedback.notificationOccurred('success'); // Вибрация успеха
-
-                mission.status = "completed";
-                currentMission++;
-
-                this.actionButton.setText("Далее").setInteractive();
-                this.actionButton.setBackgroundColor('#28a745');
-
-                this.time.delayedCall(1500, this.nextMission, [], this); // Переходим к следующей миссии
-                this.saveGameState(); // Сохраняем прогресс
-            }
-        }
-
-        saveGameState() {
-            const gameState = {
-                money: currentMoney,
-                missionIndex: currentMission,
-                missions: missions
-                // Дополнительно можно сохранять инвентарь, уровень и т.д.
+        getMissionData(type) {
+            const data = {
+                clean: { text: "Мой айкос засорился, вкус совсем пропал. Почистишь?", reward: 50, xp: 100 },
+                diag: { text: "Устройство мигает красным и не заряжается. В чем проблема?", reward: 80, xp: 150 },
+                sale: { text: "Хочу обновить стиль. Есть классные колпачки?", reward: 120, xp: 200 }
             };
-            localStorage.setItem('iqosGameSave', JSON.stringify(gameState));
-            console.log("Игра сохранена:", gameState);
+            return data[type];
+        }
+
+        startMission(type) {
+            tg.HapticFeedback.impactOccurred('medium');
+            this.dialogBox.setVisible(false);
+            
+            if (type === 'clean') this.miniGameClean();
+            if (type === 'diag') this.miniGameDiag();
+            if (type === 'sale') this.miniGameSale();
+        }
+
+        // --- МИНИ-ИГРА: ЧИСТКА (Тапы) ---
+        miniGameClean() {
+            const { width, height } = this.scale;
+            const item = this.add.circle(width/2, height/2, 60, 0xffffff, 0.1).setStrokeStyle(2, 0x00f2ff);
+            const dirt = this.add.circle(width/2, height/2, 20, 0x443322);
+            
+            let clicks = 0;
+            dirt.setInteractive().on('pointerdown', () => {
+                clicks++;
+                dirt.alpha -= 0.15;
+                tg.HapticFeedback.selectionChanged();
+                if (clicks >= 7) {
+                    item.destroy(); dirt.destroy();
+                    this.completeMission();
+                }
+            });
+        }
+
+        // --- МИНИ-ИГРА: ДИАГНОСТИКА (Удержание) ---
+        miniGameDiag() {
+            const { width, height } = this.scale;
+            const barBg = this.add.rectangle(width/2, height/2, 200, 20, 0x333333);
+            const barFill = this.add.rectangle(width/2 - 100, height/2, 0, 20, 0x00f2ff).setOrigin(0, 0.5);
+            
+            this.add.text(width/2, height/2 - 40, "ЗАЖМИ ДЛЯ СКАНЕРОВАНИЯ", { fontSize: '14px', fill: '#00f2ff' }).setOrigin(0.5);
+
+            this.input.on('pointerdown', () => this.isScanning = true);
+            this.input.on('pointerup', () => this.isScanning = false);
+
+            this.scanTimer = this.time.addEvent({
+                delay: 50,
+                callback: () => {
+                    if (this.isScanning && barFill.width < 200) {
+                        barFill.width += 4;
+                        tg.HapticFeedback.selectionChanged();
+                        if (barFill.width >= 200) {
+                            this.scanTimer.remove();
+                            this.completeMission();
+                        }
+                    }
+                },
+                loop: true
+            });
+        }
+
+        // --- МИНИ-ИГРА: ПРОДАЖА (Выбор) ---
+        miniGameSale() {
+            const { width, height } = this.scale;
+            const options = ["Синий колпачок", "Золотой чехол"];
+            
+            options.forEach((opt, i) => {
+                const b = this.add.rectangle(width/2, height/2 - 50 + (i * 80), 250, 60, 0x333333).setInteractive();
+                const t = this.add.text(width/2, height/2 - 50 + (i * 80), opt, { fill: '#00f2ff' }).setOrigin(0.5);
+                
+                b.on('pointerdown', () => {
+                    this.completeMission();
+                });
+            });
+        }
+
+        completeMission() {
+            this.money += this.currentMission.reward;
+            this.xp += this.currentMission.xp;
+            
+            localStorage.setItem('iqos_money', this.money);
+            localStorage.setItem('iqos_xp', this.xp);
+
+            tg.HapticFeedback.notificationOccurred('success');
+            
+            // Сообщение об успехе
+            const { width, height } = this.scale;
+            const winText = this.add.text(width/2, height/2, `УСПЕХ!\n+$${this.currentMission.reward}\n+${this.currentMission.xp} XP`, {
+                fontSize: '32px', color: '#00f2ff', align: 'center', fontWeight: 'bold'
+            }).setOrigin(0.5);
+
+            this.time.delayedCall(2000, () => {
+                location.reload(); 
+            });
         }
     }
+
+    const config = {
+        type: Phaser.AUTO,
+        width: window.innerWidth,
+        height: window.innerHeight,
+        scene: IQOSGame,
+        backgroundColor: '#0a0a0a'
+    };
+    new Phaser.Game(config);
 </script>
 </body>
 </html>
