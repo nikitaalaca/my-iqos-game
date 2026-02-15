@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>IQOS Expert Saga</title>
+    <title>IQOS Smash Expert</title>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        body { margin: 0; background: #0a0a0a; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
+        body { margin: 0; background: #000; overflow: hidden; touch-action: none; }
     </style>
 </head>
 <body>
@@ -15,158 +15,127 @@
     const tg = window.Telegram.WebApp;
     tg.expand();
 
-    class IQOSGame extends Phaser.Scene {
-        constructor() { super('IQOSGame'); }
+    class WhackGame extends Phaser.Scene {
+        constructor() { super('WhackGame'); }
 
         init() {
-            // Загрузка данных или значения по умолчанию
-            this.money = parseInt(localStorage.getItem('iqos_money')) || 0;
-            this.xp = parseInt(localStorage.getItem('iqos_xp')) || 0;
-            this.level = Math.floor(this.xp / 500) + 1;
+            this.score = 0;
+            this.timeLeft = 30; // Игра длится 30 секунд
+            this.isGameOver = false;
         }
 
         create() {
             const { width, height } = this.scale;
 
-            // Рендер фона
+            // Фон (Стильный темный стол)
             const bg = this.add.graphics();
-            bg.fillGradientStyle(0x1a1a1a, 0x1a1a1a, 0x050505, 0x050505, 1);
+            bg.fillGradientStyle(0x0f0f0f, 0x0f0f0f, 0x1a1a1a, 0x1a1a1a, 1);
             bg.fillRect(0, 0, width, height);
 
-            // Верхняя панель (Рейтинг и Деньги)
-            this.uiPanel = this.add.graphics().fillStyle(0x000000, 0.7).fillRect(0, 0, width, 100);
-            this.moneyText = this.add.text(20, 20, `💵 $${this.money}`, { fontSize: '22px', fill: '#00f2ff', fontWeight: 'bold' });
-            this.levelText = this.add.text(20, 55, `⭐ Уровень: ${this.level} (XP: ${this.xp})`, { fontSize: '16px', fill: '#ffffff' });
+            // Сетка "дырок" (3x3)
+            this.holes = [];
+            const startX = width * 0.2;
+            const startY = height * 0.3;
+            const spacingX = width * 0.3;
+            const spacingY = height * 0.15;
 
-            // Генерация случайного клиента
-            this.createRandomClient();
-        }
-
-        createRandomClient() {
-            const { width, height } = this.scale;
-            const missionTypes = ['clean', 'diag', 'sale'];
-            const type = missionTypes[Math.floor(Math.random() * missionTypes.length)];
-
-            this.currentMission = this.getMissionData(type);
-
-            // Визуал клиента
-            this.clientContainer = this.add.container(width/2, height * 0.4);
-            const body = this.add.ellipse(0, 100, 130, 200, 0x222222).setStrokeStyle(2, 0x444444);
-            const head = this.add.circle(0, 0, 40, 0x333333);
-            this.clientContainer.add([body, head]);
-
-            // Облачко диалога
-            this.dialogBox = this.add.container(width/2, height * 0.7);
-            const rect = this.add.rectangle(0, 0, width - 40, 150, 0xffffff, 0.05).setStrokeStyle(1, 0x00f2ff, 0.3);
-            const msg = this.add.text(0, -30, this.currentMission.text, { 
-                fontSize: '18px', fill: '#fff', align: 'center', wordWrap: { width: width - 80 } 
-            }).setOrigin(0.5);
-
-            // Кнопка действия
-            const btn = this.add.rectangle(0, 40, 220, 50, 0x00f2ff).setInteractive();
-            const btnTxt = this.add.text(0, 40, "НАЧАТЬ", { color: '#000', fontWeight: 'bold' }).setOrigin(0.5);
-            
-            this.dialogBox.add([rect, msg, btn, btnTxt]);
-
-            btn.on('pointerdown', () => this.startMission(type));
-        }
-
-        getMissionData(type) {
-            const data = {
-                clean: { text: "Мой айкос засорился, вкус совсем пропал. Почистишь?", reward: 50, xp: 100 },
-                diag: { text: "Устройство мигает красным и не заряжается. В чем проблема?", reward: 80, xp: 150 },
-                sale: { text: "Хочу обновить стиль. Есть классные колпачки?", reward: 120, xp: 200 }
-            };
-            return data[type];
-        }
-
-        startMission(type) {
-            tg.HapticFeedback.impactOccurred('medium');
-            this.dialogBox.setVisible(false);
-            
-            if (type === 'clean') this.miniGameClean();
-            if (type === 'diag') this.miniGameDiag();
-            if (type === 'sale') this.miniGameSale();
-        }
-
-        // --- МИНИ-ИГРА: ЧИСТКА (Тапы) ---
-        miniGameClean() {
-            const { width, height } = this.scale;
-            const item = this.add.circle(width/2, height/2, 60, 0xffffff, 0.1).setStrokeStyle(2, 0x00f2ff);
-            const dirt = this.add.circle(width/2, height/2, 20, 0x443322);
-            
-            let clicks = 0;
-            dirt.setInteractive().on('pointerdown', () => {
-                clicks++;
-                dirt.alpha -= 0.15;
-                tg.HapticFeedback.selectionChanged();
-                if (clicks >= 7) {
-                    item.destroy(); dirt.destroy();
-                    this.completeMission();
+            for (let i = 0; i < 3; i++) {
+                for (let j = 0; j < 3; j++) {
+                    const hX = startX + (i * spacingX);
+                    const hY = startY + (j * spacingY);
+                    
+                    // Рисуем дырку
+                    this.add.ellipse(hX, hY + 40, 80, 40, 0x000000);
+                    
+                    this.holes.push({ x: hX, y: hY });
                 }
-            });
-        }
+            }
 
-        // --- МИНИ-ИГРА: ДИАГНОСТИКА (Удержание) ---
-        miniGameDiag() {
-            const { width, height } = this.scale;
-            const barBg = this.add.rectangle(width/2, height/2, 200, 20, 0x333333);
-            const barFill = this.add.rectangle(width/2 - 100, height/2, 0, 20, 0x00f2ff).setOrigin(0, 0.5);
-            
-            this.add.text(width/2, height/2 - 40, "ЗАЖМИ ДЛЯ СКАНЕРОВАНИЯ", { fontSize: '14px', fill: '#00f2ff' }).setOrigin(0.5);
+            // Интерфейс
+            this.scoreText = this.add.text(20, 20, `ОЧКИ: 0`, { fontSize: '24px', fill: '#00f2ff', fontWeight: 'bold' });
+            this.timeText = this.add.text(width - 150, 20, `ВРЕМЯ: 30`, { fontSize: '24px', fill: '#ff3300' });
 
-            this.input.on('pointerdown', () => this.isScanning = true);
-            this.input.on('pointerup', () => this.isScanning = false);
-
-            this.scanTimer = this.time.addEvent({
-                delay: 50,
+            // Таймер игры
+            this.gameTimer = this.time.addEvent({
+                delay: 1000,
                 callback: () => {
-                    if (this.isScanning && barFill.width < 200) {
-                        barFill.width += 4;
-                        tg.HapticFeedback.selectionChanged();
-                        if (barFill.width >= 200) {
-                            this.scanTimer.remove();
-                            this.completeMission();
-                        }
-                    }
+                    this.timeLeft--;
+                    this.timeText.setText(`ВРЕМЯ: ${this.timeLeft}`);
+                    if (this.timeLeft <= 0) this.gameOver();
                 },
+                loop: true
+            });
+
+            // Цикл появления айкосов
+            this.spawnTimer = this.time.addEvent({
+                delay: 800,
+                callback: () => this.spawnIqos(),
                 loop: true
             });
         }
 
-        // --- МИНИ-ИГРА: ПРОДАЖА (Выбор) ---
-        miniGameSale() {
-            const { width, height } = this.scale;
-            const options = ["Синий колпачок", "Золотой чехол"];
+        spawnIqos() {
+            if (this.isGameOver) return;
+
+            const hole = Phaser.Utils.Array.GetRandom(this.holes);
             
-            options.forEach((opt, i) => {
-                const b = this.add.rectangle(width/2, height/2 - 50 + (i * 80), 250, 60, 0x333333).setInteractive();
-                const t = this.add.text(width/2, height/2 - 50 + (i * 80), opt, { fill: '#00f2ff' }).setOrigin(0.5);
+            // Создаем визуальный объект айкоса (прямоугольник с закруглением)
+            const iqos = this.add.container(hole.x, hole.y + 50);
+            const body = this.add.rectangle(0, 0, 40, 100, 0xffffff).setRadius(10);
+            const light = this.add.circle(0, -30, 5, 0x00f2ff);
+            iqos.add([body, light]);
+
+            // Анимация выпрыгивания
+            this.tweens.add({
+                targets: iqos,
+                y: hole.y - 20,
+                duration: 300,
+                yoyo: true,
+                hold: 400, // Сколько он "висит" перед тем как уйти обратно
+                onComplete: () => iqos.destroy()
+            });
+
+            body.setInteractive();
+            body.on('pointerdown', () => {
+                this.score += 10;
+                this.scoreText.setText(`ОЧКИ: ${this.score}`);
+                tg.HapticFeedback.impactOccurred('medium');
                 
-                b.on('pointerdown', () => {
-                    this.completeMission();
-                });
+                // Эффект взрыва (разлетающиеся частицы)
+                this.createExplosion(hole.x, hole.y);
+                
+                iqos.destroy();
             });
         }
 
-        completeMission() {
-            this.money += this.currentMission.reward;
-            this.xp += this.currentMission.xp;
-            
-            localStorage.setItem('iqos_money', this.money);
-            localStorage.setItem('iqos_xp', this.xp);
+        createExplosion(x, y) {
+            for (let i = 0; i < 5; i++) {
+                const part = this.add.rectangle(x, y, 10, 10, 0x00f2ff);
+                this.tweens.add({
+                    targets: part,
+                    x: x + Phaser.Math.Between(-50, 50),
+                    y: y + Phaser.Math.Between(-50, 50),
+                    alpha: 0,
+                    duration: 400,
+                    onComplete: () => part.destroy()
+                });
+            }
+        }
 
-            tg.HapticFeedback.notificationOccurred('success');
-            
-            // Сообщение об успехе
+        gameOver() {
+            this.isGameOver = true;
+            this.spawnTimer.remove();
+            this.gameTimer.remove();
+
             const { width, height } = this.scale;
-            const winText = this.add.text(width/2, height/2, `УСПЕХ!\n+$${this.currentMission.reward}\n+${this.currentMission.xp} XP`, {
-                fontSize: '32px', color: '#00f2ff', align: 'center', fontWeight: 'bold'
-            }).setOrigin(0.5);
+            this.add.rectangle(width/2, height/2, width, height, 0x000000, 0.8);
+            this.add.text(width/2, height/2 - 50, "КОНЕЦ ИГРЫ", { fontSize: '42px', fill: '#00f2ff' }).setOrigin(0.5);
+            this.add.text(width/2, height/2 + 20, `РЕЗУЛЬТАТ: ${this.score}`, { fontSize: '28px', fill: '#fff' }).setOrigin(0.5);
 
-            this.time.delayedCall(2000, () => {
-                location.reload(); 
-            });
+            const restartBtn = this.add.rectangle(width/2, height/2 + 100, 200, 50, 0x00f2ff).setInteractive();
+            this.add.text(width/2, height/2 + 100, "ЗАНОВО", { color: '#000' }).setOrigin(0.5);
+
+            restartBtn.on('pointerdown', () => location.reload());
         }
     }
 
@@ -174,11 +143,10 @@
         type: Phaser.AUTO,
         width: window.innerWidth,
         height: window.innerHeight,
-        scene: IQOSGame,
-        backgroundColor: '#0a0a0a'
+        scene: WhackGame,
+        backgroundColor: '#000'
     };
     new Phaser.Game(config);
 </script>
 </body>
 </html>
-
