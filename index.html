@@ -3,83 +3,236 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>IQOS Expert Simulator</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.60.0/phaser.min.js"></script>
+    <title>IQOS Expert Simulator 2D</title>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        body { margin: 0; padding: 0; background: #000; overflow: hidden; font-family: sans-serif; }
+        body { margin: 0; padding: 0; background: #000; overflow: hidden; font-family: 'Arial', sans-serif; }
         canvas { display: block; margin: 0 auto; }
+        #game-container {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #000;
+        }
     </style>
 </head>
 <body>
+<div id="game-container"></div>
+
 <script>
+    // Инициализация Telegram WebApp
     const tg = window.Telegram.WebApp;
-    tg.expand(); // Расширяем на весь экран ТГ
+    tg.expand(); // Расширяем приложение на весь экран
+    tg.ready();
+
+    let currentMoney = 0;
+    let currentMission = 0;
+    let missions = [
+        {
+            problem: "Устройство плохо тянется, похоже на засор.",
+            solution: "Почистить устройство",
+            reward: 50,
+            status: "initial"
+        },
+        {
+            problem: "Мигает красным, нагреватель не работает.",
+            solution: "Сделать диагностику", // Тут можно будет добавить мини-игру по диагностике
+            reward: 75,
+            status: "initial"
+        },
+        {
+            problem: "Хочу посмотреть новые вкусы и купить что-нибудь.",
+            solution: "Предложить продукт", // Тут будет выбор из ассортимента
+            reward: 100,
+            status: "initial"
+        }
+    ];
 
     const config = {
         type: Phaser.AUTO,
-        width: 400,
-        height: 600,
-        backgroundColor: '#f4f4f4',
+        width: window.innerWidth, // Адаптивная ширина
+        height: window.innerHeight, // Адаптивная высота
         parent: 'game-container',
-        scene: { preload: preload, create: create, update: update }
+        scene: [BootScene, GameScene] // Добавляем несколько сцен
     };
 
     const game = new Phaser.Game(config);
-    let money = 0;
-    let statusText, moneyText, instruction;
 
-    function preload() {
-        // Здесь мы используем заглушки-цвета, так как у нас нет картинок
-        // В реальной игре ты заменишь их на свои .png файлы
-    }
+    // --- Сцена загрузки и главного меню ---
+    class BootScene extends Phaser.Scene {
+        constructor() {
+            super('BootScene');
+        }
 
-    function create() {
-        // Фон магазина
-        this.add.rectangle(200, 300, 400, 600, 0xeeeeee);
-        this.add.text(200, 50, "МАГАЗИН IQOS", { fontSize: '24px', color: '#333', fontWeight: 'bold' }).setOrigin(0.5);
+        preload() {
+            this.load.image('play_button', 'assets/play_button.png');
+            this.load.image('shop_bg', 'assets/shop_bg.png');
+            this.load.image('client', 'assets/client.png');
+            this.load.image('iqos_device', 'assets/iqos_device.png');
+        }
 
-        // Деньги
-        moneyText = this.add.text(20, 20, `Баланс: $${money}`, { fontSize: '18px', color: '#000' });
+        create() {
+            // Фон главного меню
+            this.add.image(this.cameras.main.width / 2, this.cameras.main.height / 2, 'shop_bg')
+                .setOrigin(0.5)
+                .setDisplaySize(this.cameras.main.width, this.cameras.main.height);
 
-        // Персонаж клиента (условный круг)
-        let client = this.add.circle(200, 200, 50, 0x3498db);
-        statusText = this.add.text(200, 280, "Клиент: У меня плохо тянется...", { 
-            fontSize: '16px', color: '#444', backgroundColor: '#fff', padding: 5 
-        }).setOrigin(0.5);
+            this.add.text(this.cameras.main.width / 2, this.cameras.main.height * 0.2, "IQOS Expert Simulator", { 
+                fontSize: '32px', 
+                fill: '#fff', 
+                stroke: '#000', 
+                strokeThickness: 4,
+                align: 'center' 
+            }).setOrigin(0.5);
 
-        // Девайс для чистки (серый прямоугольник)
-        let device = this.add.rectangle(200, 450, 60, 150, 0x333333).setInteractive();
-        let dirt = this.add.circle(200, 420, 15, 0x554433); // "Грязь"
+            const playButton = this.add.image(this.cameras.main.width / 2, this.cameras.main.height * 0.7, 'play_button')
+                .setInteractive()
+                .setScale(0.5); // Масштабируем кнопку
 
-        instruction = this.add.text(200, 550, "НАЖМИ НА ГРЯЗЬ, ЧТОБЫ ОЧИСТИТЬ", { 
-            fontSize: '14px', color: '#e74c3c' 
-        }).setOrigin(0.5);
+            playButton.on('pointerdown', () => {
+                this.sound.add('click_sound')?.play(); // Если добавим звук клика
+                tg.HapticFeedback.impactOccurred('light');
+                this.scene.start('GameScene');
+            });
 
-        // Логика чистки
-        dirt.setInteractive();
-        dirt.on('pointerdown', () => {
-            dirt.alpha -= 0.3; // Грязь исчезает при клике
-            if (dirt.alpha <= 0) {
-                dirt.destroy();
-                completeTask();
+            // Загрузка состояния игры (если есть)
+            this.loadGameState();
+        }
+
+        loadGameState() {
+            const savedState = localStorage.getItem('iqosGameSave');
+            if (savedState) {
+                const data = JSON.parse(savedState);
+                currentMoney = data.money;
+                currentMission = data.missionIndex;
+                missions = data.missions;
+                // Дополнительно можно загружать другие параметры
+                console.log("Игра загружена:", data);
+            } else {
+                console.log("Новая игра");
             }
-        });
-    }
-
-    function completeTask() {
-        money += 50;
-        moneyText.setText(`Баланс: $${money}`);
-        statusText.setText("Клиент: Спасибо! Теперь все отлично.");
-        instruction.setText("ЗАДАНИЕ ВЫПОЛНЕНО +$50");
-        
-        // Вибрация телефона через Telegram SDK
-        if (tg.HapticFeedback) {
-            tg.HapticFeedback.notificationOccurred('success');
         }
     }
 
-    function update() {}
+    // --- Основная игровая сцена ---
+    class GameScene extends Phaser.Scene {
+        constructor() {
+            super('GameScene');
+            this.clientSprite = null;
+            this.iqosSprite = null;
+            this.dialogText = null;
+            this.moneyText = null;
+            this.actionButton = null;
+        }
+
+        create() {
+            // Фон магазина
+            this.add.image(this.cameras.main.width / 2, this.cameras.main.height / 2, 'shop_bg')
+                .setOrigin(0.5)
+                .setDisplaySize(this.cameras.main.width, this.cameras.main.height);
+
+            // Клиент
+            this.clientSprite = this.add.image(this.cameras.main.width / 2, this.cameras.main.height * 0.4, 'client')
+                .setScale(0.3) // Масштабируем клиента
+                .setOrigin(0.5, 1); // Нижняя часть клиента упирается в середину
+
+            // IQOS
+            this.iqosSprite = this.add.image(this.cameras.main.width * 0.7, this.cameras.main.height * 0.65, 'iqos_device')
+                .setScale(0.15) // Масштабируем IQOS
+                .setInteractive({ pixelPerfect: true }); // Для точного клика по картинке
+
+            // Тексты
+            this.moneyText = this.add.text(20, 20, `Баланс: $${currentMoney}`, { fontSize: '20px', fill: '#000', backgroundColor: '#fff', padding: 5 });
+            this.dialogText = this.add.text(this.cameras.main.width / 2, this.cameras.main.height * 0.2, "", { 
+                fontSize: '18px', 
+                fill: '#333', 
+                backgroundColor: '#f9f9f9', 
+                padding: { x: 15, y: 10 }, 
+                wordWrap: { width: this.cameras.main.width * 0.8 },
+                align: 'center'
+            }).setOrigin(0.5);
+
+            // Кнопка действия
+            this.actionButton = this.add.text(this.cameras.main.width / 2, this.cameras.main.height * 0.85, "Начать работу", { 
+                fontSize: '22px', 
+                fill: '#fff', 
+                backgroundColor: '#28a745', 
+                padding: { x: 20, y: 10 } 
+            })
+            .setOrigin(0.5)
+            .setInteractive();
+
+            this.actionButton.on('pointerdown', this.handleAction, this);
+            this.iqosSprite.on('pointerdown', this.handleIqosClick, this); // Клик по IQOS
+
+            this.nextMission(); // Запускаем первую миссию
+        }
+
+        nextMission() {
+            if (currentMission >= missions.length) {
+                this.dialogText.setText("Все миссии выполнены! Отличная работа! Игра начнется сначала.");
+                currentMission = 0; // Начинаем заново
+                missions.forEach(m => m.status = "initial"); // Сбрасываем статус
+                this.time.delayedCall(3000, this.nextMission, [], this); // Запускаем через 3 секунды
+                return;
+            }
+
+            let mission = missions[currentMission];
+            this.dialogText.setText(`Клиент: ${mission.problem}\n\nЧто будем делать?`);
+            this.actionButton.setText(mission.solution);
+            this.actionButton.setBackgroundColor('#007bff'); // Кнопка действия
+
+            this.iqosSprite.setTint(0xffffff); // Убираем подсветку
+        }
+
+        handleAction() {
+            let mission = missions[currentMission];
+            if (mission.status === "initial") {
+                this.dialogText.setText(`Вы начали: "${mission.solution}".\n\n(Кликните по IQOS, чтобы выполнить)`);
+                this.actionButton.disableInteractive();
+                this.actionButton.setBackgroundColor('#999999');
+                this.iqosSprite.setTint(0xffff00); // Подсвечиваем IQOS
+                mission.status = "in_progress";
+            }
+        }
+
+        handleIqosClick() {
+            let mission = missions[currentMission];
+            if (mission.status === "in_progress") {
+                // Имитация "работы"
+                this.dialogText.setText("Работа завершена! Отличная чистка/диагностика/продажа!");
+                this.iqosSprite.setTint(0x00ff00); // Зеленая подсветка
+                
+                currentMoney += mission.reward;
+                this.moneyText.setText(`Баланс: $${currentMoney}`);
+                tg.HapticFeedback.notificationOccurred('success'); // Вибрация успеха
+
+                mission.status = "completed";
+                currentMission++;
+
+                this.actionButton.setText("Далее").setInteractive();
+                this.actionButton.setBackgroundColor('#28a745');
+
+                this.time.delayedCall(1500, this.nextMission, [], this); // Переходим к следующей миссии
+                this.saveGameState(); // Сохраняем прогресс
+            }
+        }
+
+        saveGameState() {
+            const gameState = {
+                money: currentMoney,
+                missionIndex: currentMission,
+                missions: missions
+                // Дополнительно можно сохранять инвентарь, уровень и т.д.
+            };
+            localStorage.setItem('iqosGameSave', JSON.stringify(gameState));
+            console.log("Игра сохранена:", gameState);
+        }
+    }
 </script>
 </body>
 </html>
+
